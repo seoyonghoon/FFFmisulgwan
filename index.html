@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>푸리에 미술관 — 푸리에 변환으로 그리는 그림</title>
+<title>푸리에 미술관 — 원을 이어서 그리는 그림</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -64,8 +64,12 @@
     align-items: flex-start;
   }
 
-  .canvas-wrap{
+  .canvas-col{
     flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .canvas-wrap{
     background: var(--bg);
     border: 1px solid var(--panel-border);
     border-radius: 4px;
@@ -80,6 +84,16 @@
     max-width: 640px;
     height: auto;
     display: block;
+    touch-action: none;
+    cursor: crosshair;
+  }
+
+  .draw-hint{
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    margin: 10px 2px 0;
+    max-width: 640px;
   }
 
   .panel{
@@ -224,8 +238,11 @@
   </header>
 
   <div class="layout">
-    <div class="canvas-wrap">
-      <canvas id="cv" width="820" height="820"></canvas>
+    <div class="canvas-col">
+      <div class="canvas-wrap">
+        <canvas id="cv" width="820" height="820"></canvas>
+      </div>
+      <p class="draw-hint">캔버스를 클릭한 채로 드래그하면 직접 그린 모양으로 바뀝니다. 손을 떼면 그 궤적으로 회전 벡터가 다시 계산돼요.</p>
     </div>
 
     <aside class="panel">
@@ -236,6 +253,7 @@
           <button data-shape="heart">하트</button>
           <button data-shape="infinity">무한대</button>
           <button data-shape="square">사각형</button>
+          <button data-shape="map">한반도</button>
         </div>
       </section>
 
@@ -306,7 +324,10 @@
     return pts;
   }
 
-  function shapeStar(n){
+  // 각 함수는 "원본 꼭짓점" 목록만 반환한다 (개수는 저마다 다르다).
+  // 최종적으로는 항상 setActivePath()에서 resamplePolygon으로 N개 점으로 통일한다.
+
+  function shapeStar(){
     const outerR = 155, innerR = 60;
     const verts = [];
     for(let i=0;i<10;i++){
@@ -314,22 +335,22 @@
       const r = (i%2===0) ? outerR : innerR;
       verts.push({ x: r*Math.cos(angle), y: r*Math.sin(angle) });
     }
-    return resamplePolygon(verts, n);
+    return verts;
   }
 
-  function shapeSquare(n){
+  function shapeSquare(){
     const half = 125;
-    const verts = [
+    return [
       {x:-half,y:-half}, {x:half,y:-half}, {x:half,y:half}, {x:-half,y:half}
     ];
-    return resamplePolygon(verts, n);
   }
 
-  function shapeHeart(n){
+  function shapeHeart(){
     const pts = [];
+    const dense = 360;
     const scale = 8.6;
-    for(let i=0;i<n;i++){
-      const t = i/n * 2*Math.PI;
+    for(let i=0;i<dense;i++){
+      const t = i/dense * 2*Math.PI;
       const x = scale * 16 * Math.pow(Math.sin(t),3);
       const y = -scale * (13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t));
       pts.push({x, y: y - 20});
@@ -337,11 +358,12 @@
     return pts;
   }
 
-  function shapeInfinity(n){
+  function shapeInfinity(){
     const pts = [];
+    const dense = 360;
     const a = 155;
-    for(let i=0;i<n;i++){
-      const t = i/n * 2*Math.PI;
+    for(let i=0;i<dense;i++){
+      const t = i/dense * 2*Math.PI;
       const x = a * Math.cos(t);
       const y = a * Math.sin(t) * Math.cos(t);
       pts.push({x,y});
@@ -349,7 +371,15 @@
     return pts;
   }
 
-  const SHAPES = { star: shapeStar, heart: shapeHeart, infinity: shapeInfinity, square: shapeSquare };
+  // 업로드한 한반도 이미지에서 윤곽선을 추출한 좌표(섬 제외, 본토만).
+  // cv2.findContours(RETR_EXTERNAL) 후 면적이 가장 큰 윤곽만 골라 approxPolyDP로 단순화, 중심 정렬 및 스케일 조정.
+  const KOREA_RAW = [[66.07,-155.0],[61.92,-145.03],[60.25,-133.39],[56.1,-130.9],[53.61,-132.56],[47.79,-130.9],[46.96,-125.08],[38.65,-117.6],[18.7,-117.6],[14.54,-115.94],[22.02,-102.64],[17.87,-93.5],[12.05,-96.82],[2.08,-95.99],[-10.39,-99.32],[-9.56,-101.81],[-16.21,-109.29],[-19.53,-105.97],[-22.02,-106.8],[-25.35,-102.64],[-26.18,-93.5],[-30.34,-91.01],[-41.97,-75.21],[-47.79,-75.21],[-50.28,-71.06],[-52.77,-71.06],[-57.76,-66.07],[-60.25,-66.9],[-67.73,-62.75],[-67.73,-59.42],[-71.06,-60.25],[-85.19,-46.96],[-86.02,-39.48],[-80.2,-36.98],[-77.71,-32.0],[-78.54,-29.5],[-76.05,-31.17],[-75.21,-35.32],[-61.09,-27.01],[-56.1,-27.84],[-58.59,-24.52],[-56.1,-17.87],[-60.25,-12.88],[-64.41,-0.42],[-62.75,1.25],[-61.92,-0.42],[-61.09,2.08],[-56.1,0.42],[-50.28,5.4],[-58.59,3.74],[-68.57,7.9],[-67.73,11.22],[-71.89,17.87],[-68.57,20.36],[-76.88,23.69],[-61.92,24.52],[-61.09,26.18],[-65.24,27.01],[-63.58,28.67],[-67.73,30.34],[-65.24,32.0],[-61.09,30.34],[-59.42,32.0],[-61.09,33.66],[-56.1,30.34],[-53.61,33.66],[-56.93,34.49],[-58.59,38.65],[-51.94,35.32],[-51.11,30.34],[-49.45,31.17],[-52.77,27.84],[-51.94,26.18],[-47.79,27.01],[-43.63,32.83],[-41.97,32.83],[-41.97,30.34],[-37.82,36.15],[-36.15,32.83],[-31.17,31.17],[-25.35,35.32],[-22.86,33.66],[-22.02,40.31],[-23.69,36.98],[-29.5,34.49],[-30.34,38.65],[-32.83,38.65],[-30.34,38.65],[-30.34,41.14],[-25.35,40.31],[-23.69,49.45],[-22.02,48.62],[-21.19,51.94],[-17.04,52.77],[-19.53,55.27],[-22.02,54.44],[-22.02,57.76],[-19.53,56.1],[-17.87,57.76],[-20.36,60.25],[-16.21,60.25],[-17.04,64.41],[-12.88,63.58],[-17.87,71.06],[-20.36,63.58],[-23.69,65.24],[-26.18,61.92],[-25.35,65.24],[-27.84,68.57],[-29.5,62.75],[-31.17,69.4],[-33.66,69.4],[-32.83,65.24],[-33.66,67.73],[-35.32,66.9],[-34.49,69.4],[-36.98,70.23],[-36.15,73.55],[-32.83,73.55],[-30.34,82.69],[-32.83,72.72],[-31.17,71.06],[-30.34,75.21],[-27.84,72.72],[-26.18,89.34],[-24.52,91.01],[-26.18,91.84],[-21.19,97.65],[-26.18,98.49],[-23.69,100.98],[-17.87,100.98],[-21.19,102.64],[-20.36,105.13],[-23.69,105.13],[-27.84,110.12],[-22.02,112.61],[-27.01,113.45],[-31.17,123.42],[-28.67,130.07],[-33.66,127.57],[-30.34,130.07],[-32.0,132.56],[-29.5,132.56],[-30.34,137.55],[-26.18,139.21],[-30.34,140.04],[-24.52,143.36],[-27.01,144.2],[-30.34,141.7],[-28.67,144.2],[-31.17,145.03],[-32.83,140.04],[-33.66,142.53],[-31.17,145.86],[-26.18,146.69],[-27.84,148.35],[-26.18,154.17],[-23.69,151.68],[-21.19,155.0],[-22.86,151.68],[-21.19,146.69],[-18.7,145.86],[-18.7,151.68],[-13.71,144.2],[-7.06,139.21],[-3.74,142.53],[-6.23,141.7],[-6.23,145.03],[-9.56,146.69],[-3.74,148.35],[-4.57,145.03],[-0.42,145.03],[-4.57,139.21],[0.42,135.05],[2.91,143.36],[7.06,137.55],[3.74,137.55],[1.25,134.22],[6.23,131.73],[10.39,132.56],[14.54,129.24],[15.38,133.39],[22.86,133.39],[25.35,135.88],[27.01,130.9],[23.69,130.07],[27.01,127.57],[30.34,128.4],[29.5,124.25],[33.66,127.57],[39.48,126.74],[40.31,129.24],[43.63,127.57],[52.77,114.28],[56.1,95.16],[53.61,97.65],[51.11,95.99],[53.61,71.06],[50.28,54.44],[41.97,38.65],[32.0,26.18],[22.86,3.74],[13.71,-2.08],[7.06,-11.22],[-1.25,-12.88],[-3.74,-15.38],[-3.74,-19.53],[-1.25,-20.36],[-3.74,-21.19],[-0.42,-23.69],[0.42,-22.02],[1.25,-29.5],[-0.42,-33.66],[2.91,-37.82],[9.56,-40.31],[13.71,-45.29],[17.87,-44.46],[20.36,-46.96],[22.02,-45.29],[31.17,-51.11],[30.34,-54.44],[42.8,-61.09],[46.96,-69.4],[56.1,-74.38],[60.25,-74.38],[61.92,-94.33],[58.59,-96.82],[59.42,-104.3],[64.41,-109.29],[64.41,-112.61],[79.37,-129.24],[81.86,-130.07],[86.02,-127.57],[81.86,-139.21],[80.2,-137.55],[74.38,-144.2],[74.38,-150.84]];
+
+  function shapeMap(){
+    return KOREA_RAW.map(([x,y])=>({x,y}));
+  }
+
+  const SHAPES = { star: shapeStar, heart: shapeHeart, infinity: shapeInfinity, square: shapeSquare, map: shapeMap };
 
   // ---------- 이산 푸리에 변환 ----------
 
@@ -383,16 +413,22 @@
   let playing = true;
   let t = 0;
   let trace = [];
-  let currentShape = 'star';
+  let isDrawing = false;
+  let strokePoints = [];
 
-  function loadShape(name){
-    currentShape = name;
-    points = SHAPES[name](N);
+  // vertices: {x,y} 좌표 목록 (캔버스 중심 기준). 개수는 몇 개든 상관없다 —
+  // resamplePolygon이 항상 N개의 등간격 점으로 다시 뽑아준다.
+  function setActivePath(vertices){
+    points = resamplePolygon(vertices, N);
     coeffs = computeDFT(points);
     totalEnergy = coeffs.reduce((s,c)=>s + c.amp*c.amp, 0) || 1;
     t = 0;
     trace = [];
     updateEnergyReadout();
+  }
+
+  function loadShape(name){
+    setActivePath(SHAPES[name]());
   }
 
   function updateEnergyReadout(){
@@ -466,7 +502,31 @@
     ctx.shadowBlur = 0;
   }
 
+  function drawLiveStroke(){
+    ctx.fillStyle = COLOR_BG;
+    ctx.fillRect(0,0,W,H);
+    if(strokePoints.length < 2) return;
+    ctx.beginPath();
+    ctx.strokeStyle = COLOR_TRACE;
+    ctx.lineWidth = 2.2;
+    ctx.shadowColor = COLOR_TRACE;
+    ctx.shadowBlur = 7;
+    for(let i=0;i<strokePoints.length;i++){
+      const p = strokePoints[i];
+      const x = cx + p.x, y = cy + p.y;
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
   function frame(){
+    if(isDrawing){
+      drawLiveStroke();
+      requestAnimationFrame(frame);
+      return;
+    }
+
     if(playing){
       const dt = speed * 0.0006;
       const next = t + dt;
@@ -523,6 +583,48 @@
     t = 0;
     trace = [];
   });
+
+  // ---------- 직접 그리기 (포인터 드래그) ----------
+
+  function getCanvasPoint(evt){
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = W / rect.width;
+    const scaleY = H / rect.height;
+    return {
+      x: (evt.clientX - rect.left) * scaleX - cx,
+      y: (evt.clientY - rect.top) * scaleY - cy
+    };
+  }
+
+  canvas.addEventListener('pointerdown', (evt)=>{
+    canvas.setPointerCapture(evt.pointerId);
+    isDrawing = true;
+    playing = false;
+    strokePoints = [getCanvasPoint(evt)];
+    document.querySelectorAll('#shapeButtons button').forEach(b=>b.classList.remove('active'));
+  });
+
+  canvas.addEventListener('pointermove', (evt)=>{
+    if(!isDrawing) return;
+    const p = getCanvasPoint(evt);
+    const last = strokePoints[strokePoints.length-1];
+    if(!last || Math.hypot(p.x-last.x, p.y-last.y) > 3){
+      strokePoints.push(p);
+    }
+  });
+
+  function finishDrawing(){
+    if(!isDrawing) return;
+    isDrawing = false;
+    if(strokePoints.length >= 3){
+      setActivePath(strokePoints);
+    }
+    playing = true;
+    playBtn.textContent = '일시정지';
+  }
+
+  canvas.addEventListener('pointerup', finishDrawing);
+  canvas.addEventListener('pointercancel', finishDrawing);
 
   // ---------- 시작 ----------
 
