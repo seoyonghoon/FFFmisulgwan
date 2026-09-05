@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>푸리에 미술관 — 푸리에 변환으로 그리는 그림</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #050506;
+    --panel-bg: #0c0d11;
+    --panel-border: #1d1f26;
+    --ink: #ececE6;
+    --muted: #83879a;
+    --ref-line: #d9c74e;
+    --vector: #f4f4ef;
+    --circle: rgba(112,152,214,0.32);
+    --trace: #5be7cf;
+    --accent: #5be7cf;
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body{
+    margin:0;
+    padding:0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-display);
+  }
+
+  .page{
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 40px 24px 64px;
+  }
+
+  header{
+    max-width: 640px;
+    margin-bottom: 32px;
+  }
+
+  header h1{
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0 0 10px;
+  }
+
+  header p{
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--muted);
+    margin: 0;
+  }
+
+  .layout{
+    display: flex;
+    gap: 28px;
+    align-items: flex-start;
+  }
+
+  .canvas-wrap{
+    flex: 1 1 auto;
+    background: var(--bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    padding: 10px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  canvas{
+    width: 100%;
+    max-width: 640px;
+    height: auto;
+    display: block;
+  }
+
+  .panel{
+    flex: 0 0 260px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    padding: 20px;
+  }
+
+  .panel section{
+    margin-bottom: 24px;
+  }
+
+  .panel section:last-child{
+    margin-bottom: 0;
+  }
+
+  .panel h2{
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    margin: 0 0 10px;
+    letter-spacing: 0.01em;
+  }
+
+  .row-label{
+    display:flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+  }
+
+  .row-label h2{ margin: 0; }
+
+  .readout{
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--accent);
+  }
+
+  .hint{
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    margin: 8px 0 0;
+  }
+
+  input[type="range"]{
+    -webkit-appearance: none;
+    width: 100%;
+    height: 2px;
+    background: var(--panel-border);
+    border-radius: 2px;
+    outline: none;
+  }
+
+  input[type="range"]::-webkit-slider-thumb{
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--bg);
+  }
+
+  input[type="range"]::-moz-range-thumb{
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--bg);
+  }
+
+  .seg{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .seg button{
+    flex: 1 1 auto;
+    font-family: var(--font-display);
+    font-size: 13px;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid var(--panel-border);
+    border-radius: 3px;
+    padding: 8px 6px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+
+  .seg button:hover{
+    color: var(--ink);
+  }
+
+  .seg button.active{
+    color: var(--bg);
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .buttons-row{
+    display: flex;
+    gap: 8px;
+  }
+
+  .buttons-row button{
+    flex: 1 1 auto;
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid var(--panel-border);
+    border-radius: 3px;
+    padding: 10px 6px;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+  }
+
+  .buttons-row button:hover{
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  @media (max-width: 780px){
+    .layout{ flex-direction: column; }
+    .panel{ flex: 1 1 auto; width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <header>
+    <h1>푸리에 스케치</h1>
+    <p>진폭이 큰 순서로 회전 벡터를 이어 붙이면, 마지막 벡터 끝점이 그리는 궤적이 원래 도형에 가까워집니다. 각 막대는 자신을 반지름으로 하는 원 위를 도는 진동자입니다.</p>
+  </header>
+
+  <div class="layout">
+    <div class="canvas-wrap">
+      <canvas id="cv" width="820" height="820"></canvas>
+    </div>
+
+    <aside class="panel">
+      <section>
+        <h2>도형</h2>
+        <div class="seg" id="shapeButtons">
+          <button data-shape="star" class="active">별</button>
+          <button data-shape="heart">하트</button>
+          <button data-shape="infinity">무한대</button>
+          <button data-shape="square">사각형</button>
+        </div>
+      </section>
+
+      <section>
+        <div class="row-label">
+          <h2>정확도</h2>
+          <span class="readout" id="accuracyReadout">28 / 180항</span>
+        </div>
+        <input type="range" id="accuracySlider" min="1" max="180" value="28">
+        <p class="hint" id="energyHint">에너지 보존율 —</p>
+      </section>
+
+      <section>
+        <div class="row-label">
+          <h2>속도</h2>
+          <span class="readout" id="speedReadout">4</span>
+        </div>
+        <input type="range" id="speedSlider" min="1" max="10" value="4">
+      </section>
+
+      <section class="buttons-row">
+        <button id="playBtn">일시정지</button>
+        <button id="resetBtn">초기화</button>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<script>
+(function(){
+  const N = 180; // 표본 개수 = 사용 가능한 최대 항 개수
+  const canvas = document.getElementById('cv');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cx = W/2, cy = H/2;
+
+  const style = getComputedStyle(document.documentElement);
+  const COLOR_BG = '#050506';
+  const COLOR_REF = style.getPropertyValue('--ref-line').trim();
+  const COLOR_VEC = style.getPropertyValue('--vector').trim();
+  const COLOR_CIRCLE = style.getPropertyValue('--circle').trim();
+  const COLOR_TRACE = style.getPropertyValue('--trace').trim();
+
+  // ---------- 도형 생성 ----------
+
+  function resamplePolygon(vertices, n){
+    const edges = [];
+    let total = 0;
+    for(let i=0;i<vertices.length;i++){
+      const p1 = vertices[i], p2 = vertices[(i+1)%vertices.length];
+      const d = Math.hypot(p2.x-p1.x, p2.y-p1.y);
+      edges.push({p1,p2,d});
+      total += d;
+    }
+    const pts = [];
+    for(let i=0;i<n;i++){
+      const target = total * i / n;
+      let acc = 0;
+      for(const e of edges){
+        if(acc + e.d >= target){
+          const frac = e.d === 0 ? 0 : (target - acc) / e.d;
+          pts.push({ x: e.p1.x + (e.p2.x-e.p1.x)*frac, y: e.p1.y + (e.p2.y-e.p1.y)*frac });
+          break;
+        }
+        acc += e.d;
+      }
+    }
+    return pts;
+  }
+
+  function shapeStar(n){
+    const outerR = 155, innerR = 60;
+    const verts = [];
+    for(let i=0;i<10;i++){
+      const angle = -Math.PI/2 + i*Math.PI/5;
+      const r = (i%2===0) ? outerR : innerR;
+      verts.push({ x: r*Math.cos(angle), y: r*Math.sin(angle) });
+    }
+    return resamplePolygon(verts, n);
+  }
+
+  function shapeSquare(n){
+    const half = 125;
+    const verts = [
+      {x:-half,y:-half}, {x:half,y:-half}, {x:half,y:half}, {x:-half,y:half}
+    ];
+    return resamplePolygon(verts, n);
+  }
+
+  function shapeHeart(n){
+    const pts = [];
+    const scale = 8.6;
+    for(let i=0;i<n;i++){
+      const t = i/n * 2*Math.PI;
+      const x = scale * 16 * Math.pow(Math.sin(t),3);
+      const y = -scale * (13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t));
+      pts.push({x, y: y - 20});
+    }
+    return pts;
+  }
+
+  function shapeInfinity(n){
+    const pts = [];
+    const a = 155;
+    for(let i=0;i<n;i++){
+      const t = i/n * 2*Math.PI;
+      const x = a * Math.cos(t);
+      const y = a * Math.sin(t) * Math.cos(t);
+      pts.push({x,y});
+    }
+    return pts;
+  }
+
+  const SHAPES = { star: shapeStar, heart: shapeHeart, infinity: shapeInfinity, square: shapeSquare };
+
+  // ---------- 이산 푸리에 변환 ----------
+
+  function computeDFT(points){
+    const n = points.length;
+    const coeffs = [];
+    for(let k=0;k<n;k++){
+      let re = 0, im = 0;
+      for(let t=0;t<n;t++){
+        const theta = 2*Math.PI*k*t/n;
+        const c = Math.cos(theta), s = Math.sin(theta);
+        re += points[t].x*c + points[t].y*s;
+        im += points[t].y*c - points[t].x*s;
+      }
+      re /= n; im /= n;
+      let freq = k;
+      if(freq > n/2) freq -= n;
+      coeffs.push({ freq, re, im, amp: Math.hypot(re,im) });
+    }
+    coeffs.sort((a,b)=>b.amp - a.amp);
+    return coeffs;
+  }
+
+  // ---------- 상태 ----------
+
+  let points = [];
+  let coeffs = [];
+  let totalEnergy = 1;
+  let K = parseInt(document.getElementById('accuracySlider').value, 10);
+  let speed = parseInt(document.getElementById('speedSlider').value, 10);
+  let playing = true;
+  let t = 0;
+  let trace = [];
+  let currentShape = 'star';
+
+  function loadShape(name){
+    currentShape = name;
+    points = SHAPES[name](N);
+    coeffs = computeDFT(points);
+    totalEnergy = coeffs.reduce((s,c)=>s + c.amp*c.amp, 0) || 1;
+    t = 0;
+    trace = [];
+    updateEnergyReadout();
+  }
+
+  function updateEnergyReadout(){
+    const used = coeffs.slice(0, K).reduce((s,c)=>s + c.amp*c.amp, 0);
+    const pct = (100 * used / totalEnergy).toFixed(1);
+    document.getElementById('energyHint').textContent = `에너지 보존율 ${pct}%`;
+    document.getElementById('accuracyReadout').textContent = `${K} / ${N}항`;
+  }
+
+  // ---------- 렌더링 ----------
+
+  function drawReference(){
+    ctx.beginPath();
+    ctx.strokeStyle = COLOR_REF;
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = 1.4;
+    for(let i=0;i<points.length;i++){
+      const p = points[i];
+      const x = cx + p.x, y = cy + p.y;
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  function drawVectors(time){
+    let x = cx, y = cy;
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = COLOR_CIRCLE;
+    for(let i=0;i<K;i++){
+      const c = coeffs[i];
+      if(!c) break;
+      const theta = 2*Math.PI*c.freq*time;
+      const cosT = Math.cos(theta), sinT = Math.sin(theta);
+      const vx = c.re*cosT - c.im*sinT;
+      const vy = c.re*sinT + c.im*cosT;
+
+      if(c.amp > 0.4){
+        ctx.beginPath();
+        ctx.arc(x, y, c.amp, 0, Math.PI*2);
+        ctx.stroke();
+      }
+
+      const nx = x + vx, ny = y + vy;
+      ctx.beginPath();
+      ctx.strokeStyle = COLOR_VEC;
+      ctx.lineWidth = 1.4;
+      ctx.moveTo(x, y);
+      ctx.lineTo(nx, ny);
+      ctx.stroke();
+      ctx.strokeStyle = COLOR_CIRCLE;
+
+      x = nx; y = ny;
+    }
+    return {x, y};
+  }
+
+  function drawTrace(){
+    if(trace.length < 2) return;
+    ctx.beginPath();
+    ctx.strokeStyle = COLOR_TRACE;
+    ctx.lineWidth = 2.2;
+    ctx.shadowColor = COLOR_TRACE;
+    ctx.shadowBlur = 7;
+    for(let i=0;i<trace.length;i++){
+      const p = trace[i];
+      if(i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  function frame(){
+    if(playing){
+      const dt = speed * 0.0006;
+      const next = t + dt;
+      if(next >= 1){
+        t = next - 1;
+        trace = [];
+      } else {
+        t = next;
+      }
+    }
+
+    ctx.fillStyle = COLOR_BG;
+    ctx.fillRect(0,0,W,H);
+
+    drawReference();
+    const pen = drawVectors(t);
+    trace.push(pen);
+    drawTrace();
+
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- 컨트롤 ----------
+
+  document.querySelectorAll('#shapeButtons button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('#shapeButtons button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      loadShape(btn.dataset.shape);
+    });
+  });
+
+  const accuracySlider = document.getElementById('accuracySlider');
+  accuracySlider.addEventListener('input', ()=>{
+    K = parseInt(accuracySlider.value, 10);
+    t = 0;
+    trace = [];
+    updateEnergyReadout();
+  });
+
+  const speedSlider = document.getElementById('speedSlider');
+  speedSlider.addEventListener('input', ()=>{
+    speed = parseInt(speedSlider.value, 10);
+    document.getElementById('speedReadout').textContent = speed;
+  });
+
+  const playBtn = document.getElementById('playBtn');
+  playBtn.addEventListener('click', ()=>{
+    playing = !playing;
+    playBtn.textContent = playing ? '일시정지' : '재생';
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', ()=>{
+    t = 0;
+    trace = [];
+  });
+
+  // ---------- 시작 ----------
+
+  loadShape('star');
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>
